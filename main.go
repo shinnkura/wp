@@ -35,7 +35,7 @@ func main() {
 	// 環境変数から認証情報とURLを取得
 	username := os.Getenv("USER_NAME")
 	password := os.Getenv("USER_PASSWORD")
-	baseURL := os.Getenv("WP_URL") // "https://aichi.blog"
+	baseURL := os.Getenv("WP_URL")
 
 	// Basic認証のヘッダーを作成
 	auth := username + ":" + password
