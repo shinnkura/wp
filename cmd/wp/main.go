@@ -1,7 +1,6 @@
 package main
 
 import (
-	// "bytes"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
@@ -15,9 +14,11 @@ import (
 )
 
 type PostRequest struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
-	Status  string `json:"status"`
+	Title      string   `json:"title"`
+	Content    string   `json:"content"`
+	Status     string   `json:"status"`
+	Slug       string   `json:"slug"`
+	Categories []int    `json:"categories"`
 }
 
 type PostResponse struct {
@@ -35,39 +36,82 @@ type Post struct {
 	} `json:"title"`
 }
 
+type ArticleMetadata struct {
+	Title     string   `json:"Title"`
+	Image     string   `json:"Image"`
+	Permalink string   `json:"Permalink"`
+	Tag       string   `json:"Tag"`
+	Category  []string `json:"Category"`
+}
+
+type Category struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 // Markdownファイルから記事内容を読み取る関数
-func readArticleFromMd(filename string) (string, string, error) {
-	content, err := os.ReadFile(fmt.Sprintf("internal/%s.md", filename))
+func readArticleFromMd(filename string) (ArticleMetadata, string, error) {
+	content, err := os.ReadFile(fmt.Sprintf("internal/article/%s.md", filename))
 	if err != nil {
-		return "", "", fmt.Errorf("ファイル読み取りエラー: %v", err)
+		return ArticleMetadata{}, "", fmt.Errorf("ファイル読み取りエラー: %v", err)
 	}
 
-	lines := bytes.Split(content, []byte("\n"))
-	if len(lines) < 2 {
-		return "", "", fmt.Errorf("ファイルフォーマットが不正です")
+	// JSONメタデータと本文を分離
+	parts := bytes.SplitN(content, []byte("\n---\n"), 2)
+	if len(parts) != 2 {
+		return ArticleMetadata{}, "", fmt.Errorf("ファイルフォーマットが不正です。JSONメタデータと本文を'---'で区切ってください")
 	}
 
-	// 1行目をタイトルとして扱う
-	title := string(bytes.TrimPrefix(lines[0], []byte("# ")))
+	// JSONメタデータをパース
+	var metadata ArticleMetadata
+	if err := json.Unmarshal(parts[0], &metadata); err != nil {
+		return ArticleMetadata{}, "", fmt.Errorf("メタデータのJSONパースエラー: %v", err)
+	}
 
-	// 残りの内容を本文として扱う
-	body := string(bytes.Join(lines[1:], []byte("\n")))
+	// 本文を取得
+	body := string(parts[1])
 
-	return title, body, nil
+	return metadata, body, nil
+}
+
+// 画像ファイルを読み込んでBase64エンコードする関数を追加
+func readImageFile(imagePath string) (string, error) {
+	// internal/images/からの相対パスで画像を読み込む
+	imageData, err := os.ReadFile(fmt.Sprintf("internal/%s", imagePath))
+	if err != nil {
+		return "", fmt.Errorf("画像ファイル読み取りエラー: %v", err)
+	}
+
+	// Base64エンコード
+	return base64.StdEncoding.EncodeToString(imageData), nil
 }
 
 // 新しい関数を追加
 func convertMarkdownToHTML(markdown string) string {
-	// 基本的なMarkdown→HTML変換ルール
 	html := markdown
+
+	// 画像変換を修正（内部画像の場合はBase64エンコードした画像を使用）
+	html = regexp.MustCompile(`!\[([^\]]*)\]\(internal/([^)]+)\)`).ReplaceAllStringFunc(html, func(match string) string {
+		re := regexp.MustCompile(`!\[([^\]]*)\]\(internal/([^)]+)\)`)
+		matches := re.FindStringSubmatch(match)
+		if len(matches) == 3 {
+			alt := matches[1]
+			path := matches[2]
+			imageData, err := readImageFile(path)
+			if err == nil {
+				return fmt.Sprintf(`<img src="data:image/jpeg;base64,%s" alt="%s">`, imageData, alt)
+			}
+		}
+		return match
+	})
+
+	// 外部画像のための既存の変換ルールを維持
+	html = regexp.MustCompile(`!\[([^\]]*)\]\(http[^)]+\)`).ReplaceAllString(html, "<img src=\"$2\" alt=\"$1\">")
 
 	// 見出し変換
 	html = regexp.MustCompile(`(?m)^# (.+)$`).ReplaceAllString(html, "<h1>$1</h1>")
 	html = regexp.MustCompile(`(?m)^## (.+)$`).ReplaceAllString(html, "<h2>$1</h2>")
 	html = regexp.MustCompile(`(?m)^### (.+)$`).ReplaceAllString(html, "<h3>$1</h3>")
-
-	// 画像変換
-	html = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(html, "<img src=\"$2\" alt=\"$1\">")
 
 	// リンク変換
 	html = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`).ReplaceAllString(html, "<a href=\"$2\">$1</a>")
@@ -83,6 +127,42 @@ func convertMarkdownToHTML(markdown string) string {
 	html = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(html, "<strong>$1</strong>")
 
 	return html
+}
+
+func getCategoryIDs(baseURL, basicAuth string, categoryNames []string) ([]int, error) {
+	// カテゴリー一覧を取得
+	url := baseURL + "/wp-json/wp/v2/categories"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Basic "+basicAuth)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var categories []Category
+	if err := json.NewDecoder(resp.Body).Decode(&categories); err != nil {
+		return nil, err
+	}
+
+	// カテゴリー名からIDを検索
+	var categoryIDs []int
+	for _, name := range categoryNames {
+		for _, cat := range categories {
+			if cat.Name == name {
+				categoryIDs = append(categoryIDs, cat.ID)
+				break
+			}
+		}
+	}
+
+	return categoryIDs, nil
 }
 
 func main() {
@@ -103,17 +183,26 @@ func main() {
 	basicAuth := base64.StdEncoding.EncodeToString([]byte(auth))
 
 	// Markdownファイルから記事内容を読み取る
-	title, content, err := readArticleFromMd("article1") // internal/article1.md を読み込む
+	metadata, content, err := readArticleFromMd("article1")
 	if err != nil {
 		fmt.Printf("記事読み取りエラー: %v\n", err)
 		return
 	}
 
+	// カテゴリー名からIDを取得
+	categoryIDs, err := getCategoryIDs(baseURL, basicAuth, metadata.Category)
+	if err != nil {
+		fmt.Printf("カテゴリーID取得エラー: %v\n", err)
+		return
+	}
+
 	// 投稿するコンテンツを準備
 	post := PostRequest{
-		Title:   title,
-		Content: convertMarkdownToHTML(content), // Markdownを変換
-		Status:  "publish", // 下書き: draft
+		Title:      metadata.Title,
+		Content:    convertMarkdownToHTML(content),
+		Status:     "publish",
+		Slug:       metadata.Permalink,
+		Categories: categoryIDs,
 	}
 
 	// JSONに変換
