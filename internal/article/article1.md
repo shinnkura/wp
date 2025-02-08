@@ -1,6 +1,6 @@
 {
 "Title": "シンプル保育ウェブサイト Next.js 移行プロジェクト",
-"Image": "images/thumbnail.jpg",
+"Image": "go.png",
 "Permalink": "simple-hoiku-nextjs-migration",
 "Tag": "開発",
 "Category": ["技術ブログ", "プロジェクト"]

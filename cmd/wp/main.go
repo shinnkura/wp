@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"regexp"
@@ -19,6 +20,7 @@ type PostRequest struct {
 	Status     string   `json:"status"`
 	Slug       string   `json:"slug"`
 	Categories []int    `json:"categories"`
+	FeaturedMedia int    `json:"featured_media"`
 }
 
 type PostResponse struct {
@@ -47,6 +49,11 @@ type ArticleMetadata struct {
 type Category struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
+}
+
+type MediaResponse struct {
+	ID  int    `json:"id"`
+	URL string `json:"source_url"`
 }
 
 // Markdownファイルから記事内容を読み取る関数
@@ -165,6 +172,54 @@ func getCategoryIDs(baseURL, basicAuth string, categoryNames []string) ([]int, e
 	return categoryIDs, nil
 }
 
+func uploadFeaturedImage(baseURL, basicAuth, imagePath string) (int, error) {
+	fullPath := fmt.Sprintf("internal/images/%s", imagePath)
+	imageData, err := os.ReadFile(fullPath)
+	if err != nil {
+		return 0, fmt.Errorf("画像ファイル読み取りエラー: %v", err)
+	}
+
+	// マルチパートフォームデータを作成
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "image.jpg")
+	if err != nil {
+		return 0, err
+	}
+	part.Write(imageData)
+	writer.Close()
+
+	// メディアアップロードのリクエストを作成
+	url := baseURL + "/wp-json/wp/v2/media"
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return 0, err
+	}
+
+	req.Header.Set("Authorization", "Basic "+basicAuth)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	// リクエストを送信
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	// レスポンスを処理
+	var mediaResp MediaResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mediaResp); err != nil {
+		return 0, err
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return 0, fmt.Errorf("画像アップロードエラー: %d", resp.StatusCode)
+	}
+
+	return mediaResp.ID, nil
+}
+
 func main() {
 	// .envファイルを読み込む
 	err := godotenv.Load()
@@ -196,55 +251,65 @@ func main() {
 		return
 	}
 
-	// 投稿するコンテンツを準備
-	post := PostRequest{
-		Title:      metadata.Title,
-		Content:    convertMarkdownToHTML(content),
-		Status:     "publish",
-		Slug:       metadata.Permalink,
-		Categories: categoryIDs,
-	}
+	if metadata.Image != "" {
+		// 画像をアップロード
+		mediaID, err := uploadFeaturedImage(baseURL, basicAuth, metadata.Image)
+		if err != nil {
+			fmt.Printf("画像アップロードエラー: %v\n", err)
+			return
+		}
 
-	// JSONに変換
-	jsonData, err := json.Marshal(post)
-	if err != nil {
-		fmt.Printf("Error marshaling JSON: %v\n", err)
-		return
-	}
+		// 投稿するコンテンツを準備
+		post := PostRequest{
+			Title:         metadata.Title,
+			Content:       convertMarkdownToHTML(content),
+			Status:        "publish",
+			Slug:          metadata.Permalink,
+			Categories:    categoryIDs,
+			FeaturedMedia: mediaID,  // アップロードした画像のIDを設定
+		}
 
-	// リクエストを作成
-	url := baseURL + "/wp-json/wp/v2/posts"
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		fmt.Printf("Error creating request: %v\n", err)
-		return
-	}
+		// JSONに変換
+		jsonData, err := json.Marshal(post)
+		if err != nil {
+			fmt.Printf("Error marshaling JSON: %v\n", err)
+			return
+		}
 
-	// ヘッダーを設定
-	req.Header.Set("Authorization", "Basic "+basicAuth)
-	req.Header.Set("Content-Type", "application/json")
+		// リクエストを作成
+		url := baseURL + "/wp-json/wp/v2/posts"
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			fmt.Printf("Error creating request: %v\n", err)
+			return
+		}
 
-	// リクエストを送信
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("Error sending request: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
+		// ヘッダーを設定
+		req.Header.Set("Authorization", "Basic "+basicAuth)
+		req.Header.Set("Content-Type", "application/json")
 
-	// レスポンスを処理
-	var postResp PostResponse
-	if err := json.NewDecoder(resp.Body).Decode(&postResp); err != nil {
-		fmt.Printf("Error decoding response: %v\n", err)
-		return
-	}
+		// リクエストを送信
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Printf("Error sending request: %v\n", err)
+			return
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusCreated {
-		fmt.Printf("投稿が成功しました。投稿ID: %d\n", postResp.ID)
-		fmt.Printf("投稿URL: %s\n", postResp.Link)
-	} else {
-		fmt.Printf("投稿に失敗しました。ステータスコード: %d\n", resp.StatusCode)
-		fmt.Printf("エラーメッセージ: %s\n", postResp.Message)
+		// レスポンスを処理
+		var postResp PostResponse
+		if err := json.NewDecoder(resp.Body).Decode(&postResp); err != nil {
+			fmt.Printf("Error decoding response: %v\n", err)
+			return
+		}
+
+		if resp.StatusCode == http.StatusCreated {
+			fmt.Printf("投稿が成功しました。投稿ID: %d\n", postResp.ID)
+			fmt.Printf("投稿URL: %s\n", postResp.Link)
+		} else {
+			fmt.Printf("投稿に失敗しました。ステータスコード: %d\n", resp.StatusCode)
+			fmt.Printf("エラーメッセージ: %s\n", postResp.Message)
+		}
 	}
 }
