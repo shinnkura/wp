@@ -11,7 +11,7 @@ import (
 )
 
 func ReadArticleFromMd(filename string) (ArticleMetadata, string, error) {
-	content, err := os.ReadFile(fmt.Sprintf("internal/article/%s.md", filename))
+	content, err := os.ReadFile(fmt.Sprintf("internal/articles/%s.md", filename))
 	if err != nil {
 		return ArticleMetadata{}, "", fmt.Errorf("ファイル読み取りエラー: %v", err)
 	}

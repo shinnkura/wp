@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -10,6 +11,18 @@ import (
 )
 
 func main() {
+	// コマンドライン引数の解析
+	flag.Parse()
+	args := flag.Args()
+
+	if len(args) != 1 {
+		fmt.Println("使用方法: go run cmd/cli [マークダウンファイル名]")
+		fmt.Println("例: go run cmd/cli article1")
+		os.Exit(1)
+	}
+
+	filename := args[0]
+
 	err := godotenv.Load()
 	if err != nil {
 		fmt.Printf("Error loading .env file: %v\n", err)
@@ -22,7 +35,8 @@ func main() {
 		os.Getenv("USER_PASSWORD"),
 	)
 
-	metadata, content, err := wp.ReadArticleFromMd("article1")
+	// 指定されたファイル名の記事を読み込む
+	metadata, content, err := wp.ReadArticleFromMd(filename)
 	if err != nil {
 		fmt.Printf("記事読み取りエラー: %v\n", err)
 		return
