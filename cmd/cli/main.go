@@ -57,12 +57,19 @@ func main() {
 		}
 	}
 
+	tagIDs, err := wp.GetTagIDs(client, metadata.Tag)
+	if err != nil {
+		fmt.Printf("タグID取得エラー: %v\n", err)
+		return
+	}
+
 	post := wp.PostRequest{
 		Title:         metadata.Title,
 		Content:       wp.ConvertMarkdownToHTML(content),
 		Status:        "publish",
 		Slug:          metadata.Permalink,
 		Categories:    categoryIDs,
+		Tags:          tagIDs,
 		FeaturedMedia: mediaID,
 	}
 

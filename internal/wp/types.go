@@ -6,6 +6,7 @@ type PostRequest struct {
     Status        string   `json:"status"`
     Slug          string   `json:"slug"`
     Categories    []int    `json:"categories"`
+    Tags          []int    `json:"tags"`
     FeaturedMedia int      `json:"featured_media"`
 }
 
@@ -20,11 +21,25 @@ type ArticleMetadata struct {
     Title     string   `json:"Title"`
     Image     string   `json:"Image"`
     Permalink string   `json:"Permalink"`
-    Tag       string   `json:"Tag"`
+    Tag       []string `json:"Tag"`
     Category  []string `json:"Category"`
 }
 
 type Category struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+type Tag struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+type CreateTagRequest struct {
+    Name string `json:"name"`
+}
+
+type TagResponse struct {
     ID   int    `json:"id"`
     Name string `json:"name"`
 }
