@@ -42,6 +42,12 @@ func main() {
 		return
 	}
 
+	content, err = wp.ExtractAndUploadImages(client, content)
+	if err != nil {
+		fmt.Printf("画像アップロードエラー: %v\n", err)
+		return
+	}
+
 	categoryIDs, err := wp.GetCategoryIDs(client, metadata.Category)
 	if err != nil {
 		fmt.Printf("カテゴリーID取得エラー: %v\n", err)

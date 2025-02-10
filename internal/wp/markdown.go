@@ -35,23 +35,8 @@ func ReadArticleFromMd(filename string) (ArticleMetadata, string, error) {
 func ConvertMarkdownToHTML(markdown string) string {
 	html := markdown
 
-	// 画像変換を修正（内部画像の場合はBase64エンコードした画像を使用）
-	html = regexp.MustCompile(`!\[([^\]]*)\]\(internal/([^)]+)\)`).ReplaceAllStringFunc(html, func(match string) string {
-		re := regexp.MustCompile(`!\[([^\]]*)\]\(internal/([^)]+)\)`)
-		matches := re.FindStringSubmatch(match)
-		if len(matches) == 3 {
-			alt := matches[1]
-			path := matches[2]
-			imageData, err := readImageFile(path)
-			if err == nil {
-				return fmt.Sprintf(`<img src="data:image/jpeg;base64,%s" alt="%s">`, imageData, alt)
-			}
-		}
-		return match
-	})
-
-	// 外部画像のための既存の変換ルールを維持
-	html = regexp.MustCompile(`!\[([^\]]*)\]\(http[^)]+\)`).ReplaceAllString(html, "<img src=\"$2\" alt=\"$1\">")
+	// 画像変換（WordPressにアップロード済みの画像URLを使用）
+	html = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(html, "<img src=\"$2\" alt=\"$1\">")
 
 	// 見出し変換
 	html = regexp.MustCompile(`(?m)^# (.+)$`).ReplaceAllString(html, "<h1>$1</h1>")
