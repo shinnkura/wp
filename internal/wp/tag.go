@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 func CreateTag(client *Client, name string) (*Tag, error) {
@@ -32,8 +33,20 @@ func CreateTag(client *Client, name string) (*Tag, error) {
 	}
 	defer resp.Body.Close()
 
+	// エラーレスポンスの詳細を取得
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		var errorResp struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err != nil {
+			return nil, fmt.Errorf("APIエラー: %d", resp.StatusCode)
+		}
+		return nil, fmt.Errorf("APIエラー: %s - %s", errorResp.Code, errorResp.Message)
+	}
+
 	var tag Tag
-	if err := client.decodeResponse(resp, &tag); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&tag); err != nil {
 		return nil, err
 	}
 
@@ -77,7 +90,7 @@ func GetTagID(client *Client, tagName string) (int, error) {
 }
 
 func GetTagIDs(client *Client, tagNames []string) ([]int, error) {
-	url := client.BaseURL + "/wp-json/wp/v2/tags"
+	url := client.BaseURL + "/wp-json/wp/v2/tags?per_page=100"  // 取得件数を増やす
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -100,7 +113,7 @@ func GetTagIDs(client *Client, tagNames []string) ([]int, error) {
 	for _, name := range tagNames {
 		found := false
 		for _, tag := range tags {
-			if tag.Name == name {
+			if strings.EqualFold(tag.Name, name) {  // 大文字小文字を区別しない比較
 				tagIDs = append(tagIDs, tag.ID)
 				found = true
 				break
@@ -111,9 +124,20 @@ func GetTagIDs(client *Client, tagNames []string) ([]int, error) {
 			// タグが存在しない場合は新規作成
 			newTag, err := CreateTag(client, name)
 			if err != nil {
-				return nil, fmt.Errorf("タグ作成エラー: %v", err)
+				// 作成に失敗した場合は、もう一度検索を試みる
+				for _, tag := range tags {
+					if strings.EqualFold(tag.Name, name) {
+						tagIDs = append(tagIDs, tag.ID)
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, fmt.Errorf("タグ作成エラー: %v", err)
+				}
+			} else {
+				tagIDs = append(tagIDs, newTag.ID)
 			}
-			tagIDs = append(tagIDs, newTag.ID)
 		}
 	}
 

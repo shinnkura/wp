@@ -56,7 +56,14 @@ func (c *Client) CreatePost(post PostRequest) (*PostResponse, error) {
 
 func (c *Client) decodeResponse(resp *http.Response, v interface{}) error {
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("APIエラー: %d", resp.StatusCode)
+		var errorResp struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err != nil {
+			return fmt.Errorf("APIエラー: %d", resp.StatusCode)
+		}
+		return fmt.Errorf("APIエラー: %s - %s", errorResp.Code, errorResp.Message)
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
 }

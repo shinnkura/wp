@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 func GetCategoryIDs(client *Client, categoryNames []string) ([]int, error) {
-	url := client.BaseURL + "/wp-json/wp/v2/categories"
+	url := client.BaseURL + "/wp-json/wp/v2/categories?per_page=100"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -31,7 +32,7 @@ func GetCategoryIDs(client *Client, categoryNames []string) ([]int, error) {
 	for _, name := range categoryNames {
 		found := false
 		for _, cat := range categories {
-			if cat.Name == name {
+			if strings.EqualFold(cat.Name, name) {
 				categoryIDs = append(categoryIDs, cat.ID)
 				found = true
 				break
@@ -42,9 +43,20 @@ func GetCategoryIDs(client *Client, categoryNames []string) ([]int, error) {
 			// カテゴリーが存在しない場合は新規作成
 			newCat, err := CreateCategory(client, name)
 			if err != nil {
-				return nil, fmt.Errorf("カテゴリー作成エラー: %v", err)
+				// 作成に失敗した場合は、もう一度検索を試みる
+				for _, cat := range categories {
+					if strings.EqualFold(cat.Name, name) {
+						categoryIDs = append(categoryIDs, cat.ID)
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, fmt.Errorf("カテゴリー作成エラー: %v", err)
+				}
+			} else {
+				categoryIDs = append(categoryIDs, newCat.ID)
 			}
-			categoryIDs = append(categoryIDs, newCat.ID)
 		}
 	}
 
