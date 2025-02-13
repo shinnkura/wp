@@ -15,13 +15,15 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 
-	if len(args) != 1 {
-		fmt.Println("使用方法: go run cmd/cli [マークダウンファイル名]")
-		fmt.Println("例: go run cmd/cli article1")
+	if len(args) != 2 {
+		fmt.Println("使用方法: go run cmd/cli [command] [マークダウンファイル名]")
+		fmt.Println("例: go run cmd/cli create article1")
+		fmt.Println("    go run cmd/cli update article1")
 		os.Exit(1)
 	}
 
-	filename := args[0]
+	command := args[0]
+	filename := args[1]
 
 	err := godotenv.Load()
 	if err != nil {
@@ -79,12 +81,35 @@ func main() {
 		FeaturedMedia: mediaID,
 	}
 
-	resp, err := client.CreatePost(post)
-	if err != nil {
-		fmt.Printf("投稿エラー: %v\n", err)
+	var resp *wp.PostResponse
+	switch command {
+	case "create":
+		resp, err = client.CreatePost(post)
+		if err != nil {
+			fmt.Printf("投稿エラー: %v\n", err)
+			return
+		}
+		// メタデータにpost_idを追加して保存
+		metadata.PostID = resp.ID
+		if err := wp.UpdateMetadata(filename, metadata); err != nil {
+			fmt.Printf("メタデータ更新エラー: %v\n", err)
+			return
+		}
+	case "update":
+		if metadata.PostID == 0 {
+			fmt.Println("エラー: この記事はまだ投稿されていません")
+			return
+		}
+		resp, err = client.UpdatePost(metadata.PostID, post)
+		if err != nil {
+			fmt.Printf("更新エラー: %v\n", err)
+			return
+		}
+	default:
+		fmt.Printf("不正なコマンド: %s\n", command)
 		return
 	}
 
-	fmt.Printf("投稿が成功しました。投稿ID: %d\n", resp.ID)
+	fmt.Printf("操作が成功しました。投稿ID: %d\n", resp.ID)
 	fmt.Printf("投稿URL: %s\n", resp.Link)
 }

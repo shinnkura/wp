@@ -54,6 +54,36 @@ func (c *Client) CreatePost(post PostRequest) (*PostResponse, error) {
 	return &postResp, nil
 }
 
+func (c *Client) UpdatePost(postID int, post PostRequest) (*PostResponse, error) {
+	jsonData, err := json.Marshal(post)
+	if err != nil {
+		return nil, fmt.Errorf("JSON変換エラー: %v", err)
+	}
+
+	url := fmt.Sprintf("%s/wp-json/wp/v2/posts/%d", c.BaseURL, postID)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Basic "+c.BasicAuth)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-HTTP-Method-Override", "PUT")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var postResp PostResponse
+	if err := c.decodeResponse(resp, &postResp); err != nil {
+		return nil, err
+	}
+
+	return &postResp, nil
+}
+
 func (c *Client) decodeResponse(resp *http.Response, v interface{}) error {
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		var errorResp struct {
