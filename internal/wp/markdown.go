@@ -34,6 +34,21 @@ func ReadArticleFromMd(filename string) (ArticleMetadata, string, error) {
 func ConvertMarkdownToHTML(markdown string) string {
 	html := markdown
 
+	// コードブロック変換（トリプルバッククォート）を最初に処理
+	html = regexp.MustCompile("(?s)```(.*?)\n(.*?)```").ReplaceAllStringFunc(html, func(match string) string {
+		re := regexp.MustCompile("(?s)```(.*?)\n(.*?)```")
+		parts := re.FindStringSubmatch(match)
+		if len(parts) == 3 {
+			lang := strings.TrimSpace(parts[1])
+			code := strings.TrimSpace(parts[2])
+			if lang == "" {
+				return "\n<pre><code>" + code + "</code></pre>\n"
+			}
+			return "\n<pre><code class=\"language-" + lang + "\">" + code + "</code></pre>\n"
+		}
+		return match
+	})
+
 	// 画像変換（WordPressにアップロード済みの画像URLを使用）
 	html = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(html, "<img src=\"$2\" alt=\"$1\">")
 
@@ -57,12 +72,18 @@ func ConvertMarkdownToHTML(markdown string) string {
 	// 連続する</ul><ul>を削除
 	html = regexp.MustCompile(`</ul>\s*<ul>`).ReplaceAllString(html, "")
 
-	// 改行変換
-	html = strings.ReplaceAll(html, "\n\n", "</p><p>")
-	html = "<p>" + html + "</p>"
+	// インラインコード変換（シングルバッククォート）
+	html = regexp.MustCompile("`([^`]+)`").ReplaceAllString(html, "<code>$1</code>")
 
-	// コードブロック変換
-	html = regexp.MustCompile("```([^`]+)```").ReplaceAllString(html, "<pre><code>$1</code></pre>")
+	// 段落タグの処理を最後に行う
+	// コードブロックを段落から除外
+	paragraphs := strings.Split(html, "\n\n")
+	for i, p := range paragraphs {
+		if !strings.Contains(p, "<pre>") && !strings.Contains(p, "</pre>") && strings.TrimSpace(p) != "" {
+			paragraphs[i] = "<p>" + strings.TrimSpace(p) + "</p>"
+		}
+	}
+	html = strings.Join(paragraphs, "\n")
 
 	// 太字変換
 	html = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(html, "<strong>$1</strong>")
