@@ -2,7 +2,6 @@ package wp
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -47,6 +46,17 @@ func ConvertMarkdownToHTML(markdown string) string {
 	// リンク変換
 	html = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`).ReplaceAllString(html, "<a href=\"$2\">$1</a>")
 
+	// 箇条書き変換
+	html = regexp.MustCompile(`(?m)^- (.+)$`).ReplaceAllStringFunc(html, func(match string) string {
+		items := regexp.MustCompile(`(?m)^- (.+)$`).FindAllStringSubmatch(match, -1)
+		if len(items) > 0 {
+			return "<ul><li>" + items[0][1] + "</li></ul>"
+		}
+		return match
+	})
+	// 連続する</ul><ul>を削除
+	html = regexp.MustCompile(`</ul>\s*<ul>`).ReplaceAllString(html, "")
+
 	// 改行変換
 	html = strings.ReplaceAll(html, "\n\n", "</p><p>")
 	html = "<p>" + html + "</p>"
@@ -58,12 +68,4 @@ func ConvertMarkdownToHTML(markdown string) string {
 	html = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(html, "<strong>$1</strong>")
 
 	return html
-}
-
-func readImageFile(imagePath string) (string, error) {
-	imageData, err := os.ReadFile(imagePath)
-	if err != nil {
-		return "", fmt.Errorf("画像ファイル読み取りエラー: %v", err)
-	}
-	return base64.StdEncoding.EncodeToString(imageData), nil
 }
