@@ -88,6 +88,11 @@ func ConvertMarkdownToHTML(markdown string) string {
 		if len(parts) == 3 {
 			lang := strings.TrimSpace(parts[1])
 			code := strings.TrimSpace(parts[2])
+
+			// HTMLエスケープ処理
+			code = strings.ReplaceAll(code, "<", "&lt;")
+			code = strings.ReplaceAll(code, ">", "&gt;")
+
 			if lang == "" {
 				return "\n<pre><code>" + code + "</code></pre>\n"
 			}
@@ -112,7 +117,16 @@ func ConvertMarkdownToHTML(markdown string) string {
 	html = processListItems(html)
 
 	// インラインコード変換（シングルバッククォート）
-	html = regexp.MustCompile("`([^`]+)`").ReplaceAllString(html, "<code>$1</code>")
+	html = regexp.MustCompile("`([^`]+)`").ReplaceAllStringFunc(html, func(match string) string {
+		// バッククォートの中身を取得
+		content := regexp.MustCompile("`([^`]+)`").FindStringSubmatch(match)[1]
+
+		// HTMLエスケープ処理
+		content = strings.ReplaceAll(content, "<", "&lt;")
+		content = strings.ReplaceAll(content, ">", "&gt;")
+
+		return "<code>" + content + "</code>"
+	})
 
 	// 段落タグの処理を最後に行う
 	// コードブロックを段落から除外

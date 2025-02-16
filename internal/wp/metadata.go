@@ -26,10 +26,13 @@ func UpdateMetadata(filename string, metadata ArticleMetadata) error {
 
 	// 本文を抽出
 	parts := bytes.Split(content, []byte("\n---\n"))
-	if len(parts) != 2 {
-		return fmt.Errorf("メタデータセクションが見つかりません")
+	if len(parts) < 2 {
+		// メタデータセクションが見つからない場合は、元のコンテンツを維持
+		return fmt.Errorf("メタデータセクションが見つかりません。ファイル形式を確認してください: %s", mdFilename)
 	}
-	body := parts[1]
+
+	// 本文部分を結合（複数の---がある場合に対応）
+	body := bytes.Join(parts[1:], []byte("\n---\n"))
 
 	// 新しいファイルの内容を構築
 	var newContent bytes.Buffer
