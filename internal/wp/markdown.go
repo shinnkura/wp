@@ -31,6 +31,53 @@ func ReadArticleFromMd(filename string) (ArticleMetadata, string, error) {
 	return metadata, string(parts[1]), nil
 }
 
+// 箇条書き変換（インデント対応）
+func processListItems(html string) string {
+	// 箇条書きの階層構造を保持する
+	var currentIndent int
+	var result strings.Builder
+
+	lines := strings.Split(html, "\n")
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if match := regexp.MustCompile(`^(\s*)- (.+)$`).FindStringSubmatch(line); match != nil {
+			indent := len(match[1])
+			content := match[2]
+
+			// インデントレベルの変化に応じてタグを追加
+			if indent > currentIndent {
+				// インデントが深くなった場合、新しい<ul>を開始
+				result.WriteString("<ul>")
+			} else if indent < currentIndent {
+				// インデントが浅くなった場合、必要な数だけ</ul>を追加
+				for j := 0; j < (currentIndent-indent)/2; j++ {
+					result.WriteString("</ul>")
+				}
+			}
+
+			currentIndent = indent
+			result.WriteString("<li>" + content + "</li>")
+		} else {
+			// 箇条書き以外の行の処理
+			if currentIndent > 0 {
+				// 箇条書きが終わった場合、必要な数だけ</ul>を追加
+				for j := 0; j < currentIndent/2; j++ {
+					result.WriteString("</ul>")
+				}
+				currentIndent = 0
+			}
+			result.WriteString(line + "\n")
+		}
+	}
+
+	// 残りの</ul>タグを追加
+	for j := 0; j < currentIndent/2; j++ {
+		result.WriteString("</ul>")
+	}
+
+	return result.String()
+}
+
 func ConvertMarkdownToHTML(markdown string) string {
 	html := markdown
 
@@ -61,16 +108,8 @@ func ConvertMarkdownToHTML(markdown string) string {
 	// リンク変換
 	html = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`).ReplaceAllString(html, "<a href=\"$2\">$1</a>")
 
-	// 箇条書き変換
-	html = regexp.MustCompile(`(?m)^- (.+)$`).ReplaceAllStringFunc(html, func(match string) string {
-		items := regexp.MustCompile(`(?m)^- (.+)$`).FindAllStringSubmatch(match, -1)
-		if len(items) > 0 {
-			return "<ul><li>" + items[0][1] + "</li></ul>"
-		}
-		return match
-	})
-	// 連続する</ul><ul>を削除
-	html = regexp.MustCompile(`</ul>\s*<ul>`).ReplaceAllString(html, "")
+	// 箇条書き変換を新しい関数で処理
+	html = processListItems(html)
 
 	// インラインコード変換（シングルバッククォート）
 	html = regexp.MustCompile("`([^`]+)`").ReplaceAllString(html, "<code>$1</code>")
