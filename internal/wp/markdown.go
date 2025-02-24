@@ -101,6 +101,9 @@ func ConvertMarkdownToHTML(markdown string) string {
 		return match
 	})
 
+	// 水平線変換
+	html = regexp.MustCompile(`(?m)^---\n`).ReplaceAllString(html, "<hr>\n")
+
 	// 画像変換（WordPressにアップロード済みの画像URLを使用）
 	html = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(html, "<img src=\"$2\" alt=\"$1\">")
 
