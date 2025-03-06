@@ -81,7 +81,10 @@ func processListItems(html string) string {
 func ConvertMarkdownToHTML(markdown string) string {
 	html := markdown
 
-	// コードブロック変換（トリプルバッククォート）を最初に処理
+	// テーブル変換を最初に処理
+	html = convertTables(html)
+
+	// コードブロック変換（トリプルバッククォート）を処理
 	html = regexp.MustCompile("(?s)```(.*?)\n(.*?)```").ReplaceAllStringFunc(html, func(match string) string {
 		re := regexp.MustCompile("(?s)```(.*?)\n(.*?)```")
 		parts := re.FindStringSubmatch(match)
@@ -145,4 +148,93 @@ func ConvertMarkdownToHTML(markdown string) string {
 	html = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(html, "<strong>$1</strong>")
 
 	return html
+}
+
+// convertTables はMarkdownのテーブルをHTMLテーブルに変換します
+func convertTables(markdown string) string {
+	lines := strings.Split(markdown, "\n")
+	var result strings.Builder
+	inTable := false
+	var tableRows []string
+
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+
+		// テーブル行の判定
+		if strings.HasPrefix(line, "|") && strings.HasSuffix(line, "|") {
+			if !inTable {
+				inTable = true
+				tableRows = make([]string, 0)
+			}
+			tableRows = append(tableRows, line)
+		} else if inTable {
+			// テーブルの終了
+			if len(tableRows) > 0 {
+				result.WriteString(processTable(tableRows))
+			}
+			inTable = false
+			result.WriteString(line + "\n")
+		} else {
+			result.WriteString(lines[i] + "\n")
+		}
+	}
+
+	// 最後のテーブルの処理
+	if inTable && len(tableRows) > 0 {
+		result.WriteString(processTable(tableRows))
+	}
+
+	return result.String()
+}
+
+// processTable は収集したテーブル行をHTMLテーブルに変換します
+func processTable(rows []string) string {
+	if len(rows) < 3 {
+		return strings.Join(rows, "\n") + "\n"
+	}
+
+	var result strings.Builder
+	result.WriteString("<table class=\"wp-table\">\n")
+
+	// ヘッダー行の処理
+	headerCells := splitTableRow(rows[0])
+	result.WriteString("<thead>\n<tr>\n")
+	for _, cell := range headerCells {
+		// 太字(**) の処理
+		cell = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(cell, "$1")
+		result.WriteString("<th>" + strings.TrimSpace(cell) + "</th>\n")
+	}
+	result.WriteString("</tr>\n</thead>\n")
+
+	// 区切り行をスキップ
+
+	// ボディ行の処理
+	result.WriteString("<tbody>\n")
+	for i := 2; i < len(rows); i++ {
+		cells := splitTableRow(rows[i])
+		result.WriteString("<tr>\n")
+		for _, cell := range cells {
+			// 太字(**) の処理
+			cell = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(cell, "$1")
+			result.WriteString("<td>" + strings.TrimSpace(cell) + "</td>\n")
+		}
+		result.WriteString("</tr>\n")
+	}
+	result.WriteString("</tbody>\n")
+	result.WriteString("</table>\n")
+
+	return result.String()
+}
+
+// splitTableRow はテーブル行を個々のセルに分割します
+func splitTableRow(row string) []string {
+	// 先頭と末尾の | を削除
+	row = strings.Trim(row, "|")
+	// セルを分割
+	cells := strings.Split(row, "|")
+	// 各セルをトリム
+	for i, cell := range cells {
+		cells[i] = strings.TrimSpace(cell)
+	}
+	return cells
 }
