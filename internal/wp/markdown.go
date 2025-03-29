@@ -99,11 +99,11 @@ func ConvertMarkdownToHTML(markdown string) string {
 			code = strings.ReplaceAll(code, ">", "&gt;")
 
 			currentPlaceholder := fmt.Sprintf(placeholder, blockCount)
-			if lang == "" {
-				codeBlocks[currentPlaceholder] = "\n<pre><code>" + code + "</code></pre>\n"
-			} else {
-				codeBlocks[currentPlaceholder] = "\n<pre><code class=\"language-" + lang + "\">" + code + "</code></pre>\n"
-			}
+
+			// 新しいテンプレートを使用
+			codeBlock := fmt.Sprintf(`<div class="code-wrap"><button class="code-copy"><i class="fa fa-copy"></i></button><pre class="wp-block-code hljs %s"><code>%s</code></pre></div>`, lang, code)
+			codeBlocks[currentPlaceholder] = codeBlock
+
 			blockCount++
 			return currentPlaceholder
 		}
