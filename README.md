@@ -64,9 +64,16 @@ go run cmd/cli update article-name
 ```
 
 ※ `article-name`は、たとえば、`internal/articles/1.md`のような記事の場合は`1`となります。
-
 ```bash
 go run cmd/cli create 1
+```
+
+※ internal/articles/ ディレクトリに新しいディレクトリを切った場合は、以下のように新しいディレクトリを指定してください。
+```bash
+go run cmd/cli create dir-name/article-name
+
+# 例
+go run cmd/cli create posts_001-050/1
 ```
 
 ## 記事ファイルの形式
