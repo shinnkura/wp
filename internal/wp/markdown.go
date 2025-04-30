@@ -101,7 +101,8 @@ func ConvertMarkdownToHTML(markdown string) string {
 			currentPlaceholder := fmt.Sprintf(placeholder, blockCount)
 
 			// 新しいテンプレートを使用
-			codeBlock := fmt.Sprintf(`<div class="code-wrap"><button class="code-copy"><i class="fa fa-copy"></i></button><pre class="wp-block-code hljs %s"><code>%s</code></pre></div>`, lang, code)
+			codeBlock := fmt.Sprintf(`<div class="hcb_wrap"><pre class="prism line-numbers language-%s" data-lang="%s" data-show-lang="1"><code class="language-%s" data-hcb-clip="%d">%s</code></pre><button class="hcb-clipboard" data-clipboard-target="[data-hcb-clip=&quot;%d&quot;]" data-clipboard-action="copy" aria-label="コードをクリップボードにコピーする"></button></div>`,
+				lang, lang, lang, blockCount, code, blockCount)
 			codeBlocks[currentPlaceholder] = codeBlock
 
 			blockCount++
