@@ -36,6 +36,7 @@ func processListItems(html string) string {
 	// 箇条書きの階層構造を保持する
 	var currentIndent int
 	var result strings.Builder
+	var isFirstListItem bool = true
 
 	lines := strings.Split(html, "\n")
 	for i := 0; i < len(lines); i++ {
@@ -44,8 +45,11 @@ func processListItems(html string) string {
 			indent := len(match[1])
 			content := match[2]
 
-			// インデントレベルの変化に応じてタグを追加
-			if indent > currentIndent {
+			// 最初の箇条書き項目の場合、必ずulタグを開始
+			if isFirstListItem {
+				result.WriteString("<ul>")
+				isFirstListItem = false
+			} else if indent > currentIndent {
 				// インデントが深くなった場合、新しい<ul>を開始
 				result.WriteString("<ul>")
 			} else if indent < currentIndent {
@@ -57,6 +61,13 @@ func processListItems(html string) string {
 
 			currentIndent = indent
 			result.WriteString("<li>" + content + "</li>")
+
+			// 次の行が箇条書きでない場合、ulタグを閉じる
+			if i+1 < len(lines) && !regexp.MustCompile(`^(\s*)- `).MatchString(lines[i+1]) {
+				result.WriteString("</ul>")
+				isFirstListItem = true
+				currentIndent = 0
+			}
 		} else {
 			// 箇条書き以外の行の処理
 			if currentIndent > 0 {
@@ -65,6 +76,7 @@ func processListItems(html string) string {
 					result.WriteString("</ul>")
 				}
 				currentIndent = 0
+				isFirstListItem = true
 			}
 			result.WriteString(line + "\n")
 		}
