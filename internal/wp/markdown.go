@@ -93,6 +93,9 @@ func processListItems(html string) string {
 func ConvertMarkdownToHTML(markdown string) string {
 	html := markdown
 
+	// asideタグの処理
+	html = regexp.MustCompile(`(?s)<aside>\s*(.*?)\s*</aside>`).ReplaceAllString(html, `<p class="is-style-big_icon_check">TL;DR;<br>$1</p>`)
+
 	// コードブロック内のテキストを一時的に保存
 	codeBlocks := make(map[string]string)
 	placeholder := "CODE_BLOCK_PLACEHOLDER_%d"
