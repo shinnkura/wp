@@ -157,7 +157,10 @@ func ConvertMarkdownToHTML(markdown string) string {
 	html = regexp.MustCompile(`(?m)^#### (.+)$`).ReplaceAllString(html, "<h4>$1</h4>")
 
 	// リンク変換
-	html = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`).ReplaceAllString(html, "<a href=\"$2\">$1</a>")
+	// プレーンURLをリンクに変換
+	html = regexp.MustCompile(`(?m)^(\d+\.\s*)?(https?://[^\s]+)$`).ReplaceAllString(html, "$1<a href=\"$2\" target=\"_blank\">$2</a>")
+	// 通常のMarkdownリンクを変換
+	html = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`).ReplaceAllString(html, "<a href=\"$2\" target=\"_blank\">$1</a>")
 
 	// 箇条書き変換
 	html = processListItems(html)
