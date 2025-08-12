@@ -101,36 +101,49 @@ func ConvertMarkdownToHTML(markdown string) string {
 	placeholder := "CODE_BLOCK_PLACEHOLDER_%d"
 	blockCount := 0
 
-	// コードブロック変換（トリプルバッククォート）を処理し、プレースホルダーで置き換え
+	// ``` コードブロック → プレースホルダ
 	html = regexp.MustCompile("(?s)```(.*?)\n(.*?)```").ReplaceAllStringFunc(html, func(match string) string {
 		re := regexp.MustCompile("(?s)```(.*?)\n(.*?)```")
 		parts := re.FindStringSubmatch(match)
 		if len(parts) == 3 {
 			lang := strings.TrimSpace(parts[1])
 			code := strings.TrimSpace(parts[2])
-
-			// HTMLエスケープ処理
 			code = strings.ReplaceAll(code, "<", "&lt;")
 			code = strings.ReplaceAll(code, ">", "&gt;")
 
 			currentPlaceholder := fmt.Sprintf(placeholder, blockCount)
-
-			// 新しいテンプレートを使用
-			codeBlock := fmt.Sprintf(`<div class="hcb_wrap"><pre class="prism line-numbers language-%s" data-lang="%s" data-show-lang="1"><code class="language-%s" data-hcb-clip="%d">%s</code></pre><button class="hcb-clipboard" data-clipboard-target="[data-hcb-clip=&quot;%d&quot;]" data-clipboard-action="copy" aria-label="コードをクリップボードにコピーする"></button></div>`,
-				lang, lang, lang, blockCount, code, blockCount)
+			codeBlock := fmt.Sprintf(
+				`<div class="hcb_wrap"><pre class="prism line-numbers language-%s" data-lang="%s" data-show-lang="1"><code class="language-%s" data-hcb-clip="%d">%s</code></pre><button class="hcb-clipboard" data-clipboard-target="[data-hcb-clip=&quot;%d&quot;]" data-clipboard-action="copy" aria-label="コードをクリップボードにコピーする"></button></div>`,
+				lang, lang, lang, blockCount, code, blockCount,
+			)
 			codeBlocks[currentPlaceholder] = codeBlock
-
 			blockCount++
 			return currentPlaceholder
 		}
 		return match
 	})
 
-	// インラインコードを一時的に保存
+	// ===== ここから【追加】：URL単独行 → WP埋め込みブロック =====
+	embedBlocks := make(map[string]string)
+	embedPlaceholder := "EMBED_BLOCK_PLACEHOLDER_%d"
+	embedCount := 0
+
+	// 行全体がURLのみのケースを検出（前後空白OK）
+	reEmbedLine := regexp.MustCompile(`(?m)^\s*(https?://[^\s]+)\s*$`)
+	html = reEmbedLine.ReplaceAllStringFunc(html, func(line string) string {
+		url := strings.TrimSpace(line)
+		// 画像URLなどはMarkdownの ![]() を優先したい場合はここで拡張子判定してスキップ可
+		ph := fmt.Sprintf(embedPlaceholder, embedCount)
+		embedBlocks[ph] = makeWpEmbedBlock(url)
+		embedCount++
+		return ph
+	})
+	// ===== 追加ここまで =====
+
+	// インラインコードの一時退避
 	inlineCodeBlocks := make(map[string]string)
 	inlinePlaceholder := "INLINE_CODE_PLACEHOLDER_%d"
 	inlineCount := 0
-
 	html = regexp.MustCompile("`([^`]+)`").ReplaceAllStringFunc(html, func(match string) string {
 		content := regexp.MustCompile("`([^`]+)`").FindStringSubmatch(match)[1]
 		content = strings.ReplaceAll(content, "<", "&lt;")
@@ -141,50 +154,56 @@ func ConvertMarkdownToHTML(markdown string) string {
 		return currentPlaceholder
 	})
 
-	// テーブル変換を処理
+	// テーブル変換
 	html = convertTables(html)
 
-	// 水平線変換
+	// 水平線
 	html = regexp.MustCompile(`(?m)^---\n`).ReplaceAllString(html, "<hr>\n")
 
-	// 画像変換
+	// 画像
 	html = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(html, "<img src=\"$2\" alt=\"$1\">")
 
-	// 見出し変換
+	// 見出し
 	html = regexp.MustCompile(`(?m)^# (.+)$`).ReplaceAllString(html, "<h1>$1</h1>")
 	html = regexp.MustCompile(`(?m)^## (.+)$`).ReplaceAllString(html, "<h2>$1</h2>")
 	html = regexp.MustCompile(`(?m)^### (.+)$`).ReplaceAllString(html, "<h3>$1</h3>")
 	html = regexp.MustCompile(`(?m)^#### (.+)$`).ReplaceAllString(html, "<h4>$1</h4>")
 
 	// リンク変換
-	// プレーンURLをリンクに変換
+	// ※ 単独URL行はすでにプレースホルダ置換済みなのでここでは通常通り linkify
 	html = regexp.MustCompile(`(?m)^(\d+\.\s*)?(https?://[^\s]+)$`).ReplaceAllString(html, "$1<a href=\"$2\" target=\"_blank\">$2</a>")
-	// 通常のMarkdownリンクを変換
 	html = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`).ReplaceAllString(html, "<a href=\"$2\" target=\"_blank\">$1</a>")
 
-	// 箇条書き変換
+	// 箇条書き
 	html = processListItems(html)
 
-	// 段落タグの処理
+	// 段落ラップ（コード or 埋め込みのプレースホルダを含む段落は除外）
 	paragraphs := strings.Split(html, "\n\n")
 	for i, p := range paragraphs {
-		if !strings.Contains(p, "CODE_BLOCK_PLACEHOLDER") && strings.TrimSpace(p) != "" {
-			paragraphs[i] = "<p>" + strings.TrimSpace(p) + "</p>"
+		ps := strings.TrimSpace(p)
+		if ps == "" {
+			continue
 		}
+		if strings.Contains(ps, "CODE_BLOCK_PLACEHOLDER") || strings.Contains(ps, "EMBED_BLOCK_PLACEHOLDER") {
+			paragraphs[i] = ps
+			continue
+		}
+		paragraphs[i] = "<p>" + ps + "</p>"
 	}
 	html = strings.Join(paragraphs, "\n")
 
-	// 太字変換
+	// 太字
 	html = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(html, "<strong>$1</strong>")
 
-	// プレースホルダーを元のコードブロックに置き換え
-	for placeholder, codeBlock := range codeBlocks {
-		html = strings.Replace(html, placeholder, codeBlock, 1)
+	// プレースホルダ復元（コード→インライン→埋め込み）
+	for ph, block := range codeBlocks {
+		html = strings.Replace(html, ph, block, 1)
 	}
-
-	// インラインコードのプレースホルダーを置き換え
-	for placeholder, code := range inlineCodeBlocks {
-		html = strings.Replace(html, placeholder, code, 1)
+	for ph, code := range inlineCodeBlocks {
+		html = strings.Replace(html, ph, code, 1)
+	}
+	for ph, block := range embedBlocks {
+		html = strings.Replace(html, ph, block, 1)
 	}
 
 	return html
@@ -277,4 +296,15 @@ func splitTableRow(row string) []string {
 		cells[i] = strings.TrimSpace(cell)
 	}
 	return cells
+}
+
+// URLをWPのEmbedブロックに直す
+func makeWpEmbedBlock(url string) string {
+	attrs, _ := json.Marshal(map[string]string{"url": url})
+	// NOTE: providerNameSlug 等は省略してOK。WP側で判定・キャッシュされます
+	return fmt.Sprintf(`<!-- wp:embed %s -->
+<figure class="wp-block-embed"><div class="wp-block-embed__wrapper">
+%s
+</div></figure>
+<!-- /wp:embed -->`, string(attrs), url)
 }
